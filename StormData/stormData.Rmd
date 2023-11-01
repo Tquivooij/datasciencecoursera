@@ -1,0 +1,240 @@
+---
+title: "Course Project 2 - Analysis of Costs and Casualties in US Storm Data '96-'11"
+author: "Tim Quivooij"
+date: "2023-10-31"
+output: html_document
+---
+
+## Synopsys
+The basic goal is to explore the NOAA Storm Database and answer the following questions:
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+The main conclusions of this analysis are:
+
+1. Tornados are by far the most harmful storm event in the US on population health over the periode 1996 - 2011. For more details see the analysis below.
+
+2. Floods are by far the storm event in the US that have the greatest economic consequences. For more details see the analysis below.
+
+
+## Source data
+The source data is originated from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
+
+National Weather ServiceStorm [Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+
+National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
+## Data processing
+
+In this section the processing of the source data is described, so it is reproducible:
+
+### Load libraries
+
+The following libraries are used:
+
+```{r echo=TRUE}
+library(tidyverse)
+```
+
+### Download and load source data
+
+First the data needs to be downloaded and processed for analysis. Set the working directory to /StormData and download the file to the subdirectory '/data'.
+
+```{r echo=TRUE}
+## First load the data
+# checking and creating directories
+if(!file.exists("data")){
+  dir.create("data")
+}
+# download files from internet
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+filename <- "./data/rep-data-StormData.csv.bz2"
+
+download.file(fileUrl, destfile = filename, method="curl") # curl: for https
+list.files("./data")
+
+# read data
+data <- read.csv(filename, header=TRUE, sep = ",") # comma-seperated file with header
+
+```
+
+### Check and look at the data
+
+First a global look at the various variables and data set:
+
+```{r}
+# check and look at the data
+names(data)
+str(data)
+head(data)
+```
+
+Let's see what types of events (EVTYPE) exist?
+
+```{r}
+events <- as.factor(unique(data$EVTYPE))
+str(events)
+```
+
+What variables are used to determine harmful for population health and economic disaster?
+
+Harmful for population is determined by the number of direct fatalities and injuries. This is listed in the following columns:
+
+- FATALITIES
+
+- INJURIES
+
+```{r}
+# FATALITIES
+summary(data$FATALITIES)
+# INJURIES
+summary(data$INJURIES)
+```
+
+What variables are used to determine the greatest economic consequences in the dataset? 
+
+According to the documentation of the dataset "Damage" is Flood related damage, crop related damage, other related damage and delayed damage. In the dataset only property damage (PROPDMG) and crop damage (CROPDMG) are listed. 
+
+With some assistance of the Discussion Forum, there is some important additional information about these columns: 
+The 'CROPDMGEXP' is the exponent values for 'CROPDMG' (crop damage). In the same way, 'PROPDMGEXP' is the exponent values for 'PROPDMG' (property damage). You should use both to get the total values for crops and property damage. (B or b = Billion, M or m = Million, K or k = Thousand, H or h = Hundred). The number from one to ten represent the power of ten (10^The number). The symbols "-", "+" and "?" refers to less than, greater than and low certainty. You have the option to ignore these three symbols altogether. 
+
+Therefore the following variables determine the economic consequences of the dataset:
+
+- PROPDMG
+
+- PROPDMGEXP
+
+- CROPDMG
+
+- CROPDMGEXP
+
+Now let's have a look at the various exponents in the dataset:
+
+```{r}
+exponentPROP <- as.factor(unique(data$PROPDMGEXP))
+exponentPROP
+exponentCROP <- as.factor(unique(data$CROPDMGEXP))
+exponentCROP
+```
+
+These values relate to the following exponents and need to be converted.  The following named list can be used to change the exponents: 
+
+```{r}
+exponent <- c(" " = 0,
+              "-" = 0,
+              "?" = 0,
+              "+" = 1,
+              "0" = 10,
+              "1" = 10,
+              "2" = 10,
+              "3" = 10,
+              "4" = 10,
+              "5" = 10,
+              "6" = 10,
+              "7" = 10,
+              "8" = 10,
+              "h" = 100,
+              "H" = 100,
+              "K" = 1000,
+              "m" = 1000000,
+              "M" = 1000000,
+              "B" = 1000000000)
+```
+
+Now, the economic consequences can be calculated as:
+
+Total damage = Total damange property + Total damage crop
+
+Total damage = PROPDMG * PROPDMGEXP  + CROPDMG * CROPDMGEXP
+
+## Results
+
+Now present the results:
+
+### Question 1) Across the United States, which types of events (variable EVTYPE) are most harmfull with respect to population health?
+
+Below are the 15 most harmfull storm events listed order by the total casualties over the period 1996 - 2011. The total casualties consists of the total number of fatalities and total number of injuries.
+
+
+```{r}
+
+# which events have most impact on populaties Health (fatalities and injuries)?
+PopHealth <- data %>%
+              select(EVTYPE, FATALITIES, INJURIES) %>%
+              group_by(EVTYPE) %>%
+              summarise(Fatalities = sum(FATALITIES), Injuries = sum(INJURIES),
+                        Total = sum(FATALITIES) + sum(INJURIES)) %>%
+              arrange(desc(Total)) 
+
+PopHealth <- PopHealth[1:15, ]
+PopHealth
+```
+
+Now product a barchart that summarizes the casualties per event type. In order to present the barchart for the fatalities, injuries and total casualties the data first need to be wrangled:
+
+```{r}
+lPopHealth <- PopHealth %>%
+              pivot_longer(cols = c("Fatalities", "Injuries", "Total"),
+                           names_to = "Impact", values_to = "Number")
+lPopHealth$Impact <- as.factor(lPopHealth$Impact)
+p <- ggplot(data = lPopHealth, aes(x= reorder(EVTYPE, -Number), y=Number , fill=Impact)) +
+  geom_bar(stat="identity", position="dodge") +
+  theme(axis.text.x = element_text(angle=60, hjust=1)) +
+  ggtitle("Most Harmful Storm Event Types in US on Population Health ('96-'11)") +
+  xlab("Storm Event Types") +
+  ylab("Number of casualties")
+p
+```
+
+### Quesion 2) Across the United States, which types of events have the greatest economic consequences.
+
+As stated above, the economic consequences can be calculated as:
+
+Total damage = Total damange property + Total damage crop
+
+Total damage = PROPDMG * PROPDMGEXP  + CROPDMG * CROPDMGEXP
+
+The top 15 storm events with the greatest economic consequences are:
+
+```{r}
+# select Economic consequences
+EcCons <- data %>%
+  select(EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP) 
+# change exponents
+EcCons$PROPDMGEXP2 <- exponent[EcCons$PROPDMGEXP]
+EcCons$CROPDMGEXP2 <- exponent[EcCons$CROPDMGEXP]
+# replace NA values with 0
+EcCons[is.na(EcCons)] <- 0
+
+# calculate Economic Costs
+EcCons$costs <- EcCons$PROPDMG* EcCons$PROPDMGEXP2 +
+                  EcCons$CROPDMG* EcCons$CROPDMGEXP2
+
+EcCons <- EcCons %>%
+          select(EVTYPE, costs) %>%
+        group_by(EVTYPE) %>%
+      summarise(totalcosts = sum(costs)) %>%
+  arrange(desc(totalcosts)) 
+
+EcCons <- EcCons[1:15, ]
+EcCons
+```
+
+Finally, plot these results:
+
+```{r}
+g <- ggplot(data = EcCons, aes(x= reorder(EVTYPE, -totalcosts), y =totalcosts/1000000 )) +
+  geom_bar(stat="identity", position="dodge", fill="green") +
+  theme(axis.text.x = element_text(angle=60, hjust=1)) +
+  ggtitle("15 Storm Event Types in US with highest Economic Costs ('96-'11)") +
+  xlab("Storm Event Types") +
+  ylab("Economic costs in Billion USD")
+  
+g
+
+```
