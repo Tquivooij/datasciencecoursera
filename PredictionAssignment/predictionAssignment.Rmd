@@ -1,0 +1,241 @@
+---
+title: "Prediction Assignment"
+author: "Tim Quivooij"
+date: "2023-11-14"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Overview and management summary
+The goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to create a model that predicts (quantifies) how well an  Unilateral Dumbbell Biceps Curl (excercise) is done.
+
+There are six possible outcomes: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+A clasification model is created using this data and with the information from the course. In this analysis report is explained 1) how I built my models (Decision Tree and Random Forest), 2) how I performed cross validation using a confusion matrix 3) the expected out of sample error and 4) predict 20 different test cases. 
+
+### Conclusion
+The conclusion of this analysis is that the random forest model is the better model and used to predict the training set of 20 cases. This model has an accuracy of 0.9941 The result of the prediction is:
+
+[1] B A B A A E D B A A B C B A E E A B B B
+Levels: A B C D E
+
+Please read further below, for the specific steps. See also the note on the performance of the knitting.
+
+## load packages
+The following packages are used:
+```{r}
+library(tidyverse) # contains multiple packages used in the class
+library(caret) # a newer version is tidymodel
+library(rattle) # prettier plot decision tree
+# library(randomForest)
+set.seed(123) # for reproduction purposes
+```
+
+## Load and tidy the data (exploratory data analysis)
+First load the data and split into training and test set.
+```{r  cache=TRUE}
+# checking and creating directories
+if(!file.exists("data")){
+  dir.create("data")
+}
+# download files from internet
+trainfileUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+trainfilename <- "./data/pml-training.csv"
+testfileUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testfilename <- "./data/pml-testing.csv"
+download.file(trainfileUrl, destfile = trainfilename, method="curl") # curl: for https
+download.file(testfileUrl, destfile = testfilename, method="curl") # curl: for https
+list.files("./data")
+# read data
+traindata <- read.csv(trainfilename, header=TRUE, sep = ",") # comma-seperated file with header
+predictdata <- read.csv(testfilename, header=TRUE, sep = ",") # comma-seperated file with header
+```
+Next, the different variables are analysed. See appendix for more information on the exploratory data analysis phase. The result of this analysis are the transformations below:
+```{r cache=TRUE}
+traindata <- traindata[ , !names(traindata) %in% 
+                        c("X", "user_name", "raw_timestamp_part_1",
+                           "raw_timestamp_part_2", "cvtd_timestamp", "num_window",
+                          "new_window")]
+# Since the predictors relate to device measurements, I choose to replace NA with 0s
+traindata[is.na(traindata)] <- 0  
+# Perform principal component analysis to reduce the number of parameters
+# Removing near zero variance variables
+nvz <- nearZeroVar(traindata)
+training <- traindata[,-nvz]
+dim(traindata)
+```
+
+Split the data in training and test:
+
+```{r cache=TRUE}
+# split data in Training (75%) and testing (25%)
+# classe parameter is predicted variable Y
+inTrain <- createDataPartition(y=traindata$classe, p=0.75, list = FALSE)
+training <- traindata[inTrain, ] # 75% training
+test <- traindata[-inTrain, ] # 25# test
+```
+
+## The models 
+Let's train 2 classification models (a Decison Tree and Random Forest) from the course on the training set:
+```{r cache=TRUE}
+# model 1: Decision tree
+#  modFit_tree <- train(classe~.,  method="rpart",  data=training)
+# modFit_tree$finalModel
+# fancyRpartPlot(modFit_tree$finalModel)
+
+# model 2: random forest - see appendix for information on why commented out here
+# modFit_RF <- train(classe~ ., method="rf", data=training, prox=TRUE)
+# modFit_RF
+#       Resampling results across tuning parameters:
+#
+#       mtry  Accuracy   Kappa    
+#       2    0.9938173  0.9921783
+#       27    0.9933415  0.9915773
+#       52    0.9889251  0.9859903
+# Use parallel implementation to increase performance of the random forest model (it was simply taking too much time before)
+# library(parallel)
+# library(doParallel)
+# cluster <-makeCluster(detectCores()-1)
+# registerDoParallel(cluster)
+# configure trainControl object
+# fitControl<-trainControl(method="cv",number=20,allowParallel = TRUE)
+# develop training model with fitControl
+# modFit_RF<-train(classe~.,method="rf",data=training,trControl=fitControl)
+# modFit_RF
+# de-register parallel processing cluster
+# stopCluster(cluster)
+# registerDoSEQ()
+```
+
+## cross validation
+Cross validation is done using the test set for both models. A confusion matrix is created based on the actual and predicted values. The confusion matrix provides the necessary information for calculating sensitivity, specificity and predictive values.
+
+```{r eval = FALSE, cache=TRUE}
+# Cross validation
+# use model to predict classe in validation set (test)
+predict_tree <- predict(modFit_tree, newdata=test)
+predict_RF <- predict(modFit_RF, newdata=test)
+
+# show confusion matrix to get estimate of out-of-sample error
+confusionMatrix(as.factor(test$classe), predict_tree)
+confusionMatrix(as.factor(test$classe), predict_RF)
+
+
+#Confusion Matrix and Statistics
+
+#          Reference
+#Prediction    A    B    C    D    E
+#         A 1280   20   93    0    2
+#         B  372  353  224    0    0
+#         C  380   32  443    0    0
+#         D  357  141  306    0    0
+#         E  125  122  236    0  418
+
+#Overall Statistics
+                                          
+#               Accuracy : 0.5086          
+#                 95% CI : (0.4945, 0.5226)
+#    No Information Rate : 0.5126          
+#    P-Value [Acc > NIR] : 0.721           
+                                          
+#                  Kappa : 0.3583          
+                                          
+# Mcnemar's Test P-Value : NA              
+
+# Statistics by Class:
+
+#                     Class: A Class: B Class: C Class: D Class: E
+# Sensitivity            0.5091  0.52844  0.34025       NA  0.99524
+# Specificity            0.9519  0.85930  0.88562   0.8361  0.89228
+# Pos Pred Value         0.9176  0.37197  0.51813       NA  0.46393
+# Neg Pred Value         0.6483  0.92035  0.78785       NA  0.99950
+# Prevalence             0.5126  0.13622  0.26550   0.0000  0.08564
+# Detection Rate         0.2610  0.07198  0.09033   0.0000  0.08524
+# Detection Prevalence   0.2845  0.19352  0.17435   0.1639  0.18373
+# Balanced Accuracy      0.7305  0.69387  0.61293       NA  0.94376
+# Confusion Matrix and Statistics
+
+#           Reference
+# Prediction    A    B    C    D    E
+#          A 1394    0    0    0    1
+#          B    5  942    2    0    0
+#          C    0    5  844    6    0
+#          D    0    0    4  799    1
+#         E    0    0    1    4  896
+
+# Overall Statistics
+                                         
+#               Accuracy : 0.9941         
+#                 95% CI : (0.9915, 0.996)
+#    No Information Rate : 0.2853         
+#    P-Value [Acc > NIR] : < 2.2e-16      
+                                         
+#                  Kappa : 0.9925         
+                                         
+# Mcnemar's Test P-Value : NA             
+
+# Statistics by Class:
+
+#                     Class: A Class: B Class: C Class: D Class: E
+# Sensitivity            0.9964   0.9947   0.9918   0.9876   0.9978
+# Specificity            0.9997   0.9982   0.9973   0.9988   0.9988
+# Pos Pred Value         0.9993   0.9926   0.9871   0.9938   0.9945
+# Neg Pred Value         0.9986   0.9987   0.9983   0.9976   0.9995
+# Prevalence             0.2853   0.1931   0.1735   0.1650   0.1831
+# Detection Rate         0.2843   0.1921   0.1721   0.1629   0.1827
+# Detection Prevalence   0.2845   0.1935   0.1743   0.1639   0.1837
+# Balanced Accuracy      0.9981   0.9965   0.9945   0.9932   0.9983
+
+```
+
+The confusion matrix shows that the random forest model is the better model, with an accuracy of 0.9953. This is a quite accurate result.
+
+
+## Predict the 20 test cases
+Finally, run the Random Forest model on the 20 cases of the test data set:
+
+```{r eval = FALSE, cache=TRUE}
+result <- predict(modFit_RF, predictdata)
+result
+#  [1] B A B A A E D B A A B C B A E E A B B B
+# Levels: A B C D E
+```
+
+# Appendix 
+## Background information
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+More information on the dataset: 
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+## The dataset and exploratory data analysis
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+The data set contains 160-1 (-classe) possible predictor variables. A training set (160 variables, 19622 rows) and a test set (160 variables, 20 rows) is available.
+The "classe" variable contains one of the following 6 values: A, B, C, D, E. Since the test set of 20 cases is used to predict the outcome as part of the assignment, these 20 cannot be considered as testset to validate the model. Therefore the trainingset should be first split into a trainingset (75%) and testset(25%.
+
+The dateset contains some columns that are not related to device measurements. These columns are X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp and num_window and will be removed. There are also a lot of NA measurements in the dataset. Instead of simply omitting the NA-values and reduce the size of the training dataset, the NA's are replaced by 0. 
+
+```{r cache=TRUE}
+# Tidy and validate data
+dim(training); dim(test)
+# check the different classes
+unique(traindata$classe)
+# check the different variables
+names(training)
+ncol(training)
+# remove columns that are not related to measurements
+# these are X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, 
+# cvtd_timestamp, num_window
+```
+
+Finally,we might not need every predictor. A weighted combination might be better and to reduce noise, therefore a Principal component analysis (PCA) is performed as explained in the course.
+
+Since the data is related to technical device measurements, I did not create any plots to view the readings.
+
+## Parallel processing and performance of knitting the document
+I used (with the help of google) a parallel implementation of the Random Forest model to increase its performance. It was simply taking too much time to calculate the model using the commands as teached in the course. The slow response times during the knitting of this document, made me run the models separately and add the results in. According to the discussion forum of the course, multiple other students were facing a simular issue.
+
