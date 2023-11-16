@@ -9,7 +9,9 @@ A clasification model is created using this data and with the information from t
 
 ## Content
 predictionAssignment.R : the r script for the analysis
+
 predictionAssignment.Rmd : the Markdown file
+
 predictionAssignment.html : the knitted report in HTML format
 
 
